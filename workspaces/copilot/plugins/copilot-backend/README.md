@@ -75,10 +75,10 @@ These variables are used to configure the plugin and ensure it communicates with
 
 ### GitHub Credentials
 
-GitHub support different auth methods depending on which API you are using.
+GitHub supports different auth methods depending on which API you are using.
 
-- Enterprise API - [only supports "classic" PAT tokens](https://docs.github.com/en/enterprise-cloud@latest/rest/copilot/copilot-usage?apiVersion=2022-11-28#get-a-summary-of-copilot-usage-for-enterprise-members)
-- Org Api - [Supports app tokens, "classic", and fine grained PAT tokens](https://docs.github.com/en/enterprise-cloud@latest/rest/copilot/copilot-usage?apiVersion=2022-11-28#get-a-summary-of-copilot-usage-for-organization-members)
+- Enterprise API - [Supports both "classic" PAT tokens and GitHub Apps](https://docs.github.com/en/enterprise-cloud@latest/rest/authentication/permissions-required-for-github-apps?apiVersion=2022-11-28#enterprise-permissions-for-enterprise-copilot-metrics)
+- Org API - [Supports app tokens, "classic", and fine grained PAT tokens](https://docs.github.com/en/enterprise-cloud@latest/rest/copilot/copilot-usage?apiVersion=2022-11-28#get-a-summary-of-copilot-usage-for-organization-members)
 
 This plugin supports both schemes and detects the best scheme based on which API(s) you have configured for use.
 
@@ -94,13 +94,14 @@ To ensure the GitHub Copilot plugin operates correctly within your organization 
    - **Purpose:** Allows the plugin to list all teams within your GitHub organization.
 
 2. **Copilot Usage**
-   - **Scopes Required - enterprise:** `manage_billing:copilot`, `read:enterprise`
+   - **Scopes Required - enterprise (PAT):** `manage_billing:copilot`, `read:enterprise`
+   - **Scopes Required - enterprise (GitHub App):** `Enterprise Copilot metrics: read` (enterprise-level permission)
    - **Scopes Required - organization:** `manage_billing:copilot`, `read:org`, or `read:enterprise`
    - **Purpose:** Enables the plugin to manage and monitor GitHub Copilot usage within your organization or/and enterprise.
 
 #### How to Configure Token Scopes
 
-**Generate a Personal Access Token (PAT) (Entperise only supports "classic" PAT tokens)**
+**Generate a Personal Access Token (PAT)**
 
 - Navigate to [GitHub Personal Access Tokens](https://github.com/settings/tokens).
 - Click on **Generate new token**.
@@ -110,8 +111,9 @@ To ensure the GitHub Copilot plugin operates correctly within your organization 
 
 - Create or reuse an existing GitHub App that you own.
 - Navigate to the app permissions
-- Select the permissions to read the org and manage billing for copilot and save
-- Install and update permissions in your oeg.
+- For organization-level access: Select permissions to read the org and manage billing for copilot
+- For enterprise-level access: Select the "Enterprise Copilot metrics" permission with `read` access
+- Install the app at the organization level (for org metrics) or enterprise level (for enterprise metrics)
 
 ### YAML Configuration Example
 
@@ -128,20 +130,22 @@ copilot:
   enterprise: YOUR_ENTERPRISE_NAME_HERE
   organization: YOUR_ORGANIZATION_NAME_HERE
 
-# Using a PAT
+# Using a PAT (works for both enterprise and organization)
 integrations:
   github:
     - host: YOUR_GITHUB_HOST_HERE
       token: YOUR_GENERATED_TOKEN
 
-# Using a GitHub App
+# Using a GitHub App (works for both enterprise and organization)
+# For enterprise: The app must be installed at the enterprise level
+# For organization: The app must be installed at the organization level
 integrations:
   github:
     - host: github.com
       apps:
         - appId: YOUR_APP_ID
           allowedInstallationOwners:
-            - YOUR_ORG_NAME
+            - YOUR_ORG_OR_ENTERPRISE_NAME
           clientId: CLIENT_ID
           clientSecret: CLIENT_SECRET
           webhookSecret: WEBHOOK_SECRET

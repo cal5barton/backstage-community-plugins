@@ -48,7 +48,7 @@ describe('getCopilotConfig', () => {
     );
   });
 
-  it('should throw an error if enterprise is set but token is missing', async () => {
+  it('should throw an error if enterprise is set but token or app is missing', async () => {
     const mockConfig = mockServices.rootConfig({
       data: {
         integrations: {
@@ -62,7 +62,7 @@ describe('getCopilotConfig', () => {
     });
 
     expect(() => getCopilotConfig(mockConfig)).toThrow(
-      'Enterprise API for copilot only works with "classic PAT" tokens. No token is configured for "github.com" in the config.',
+      'Enterprise API for copilot works with both classic PAT tokens and GitHub Apps. No token or app is configured for "github.com" in the config.',
     );
   });
 
@@ -105,7 +105,7 @@ describe('getGithubCredentials', () => {
     );
   });
 
-  it('should throw an error if enterprise is set but token is missing', async () => {
+  it('should throw an error if enterprise is set but token or app is missing', async () => {
     const mockConfig = mockServices.rootConfig({
       data: {
         integrations: {
@@ -121,7 +121,7 @@ describe('getGithubCredentials', () => {
         apiBaseUrl: '',
       }),
     ).rejects.toThrow(
-      'Enterprise API for copilot only works with "classic PAT" tokens. No token is configured for "github.com" in the config.',
+      'Enterprise API for copilot works with both classic PAT tokens and GitHub Apps. No token or app is configured for "github.com" in the config.',
     );
   });
 
@@ -245,7 +245,149 @@ describe('getGithubCredentials', () => {
     expect(result.organization).toHaveProperty('privateKey');
   });
 
-  it('should return organization credentials with app config and enterprise credentials with token config', async () => {
+  it('should return enterprise credentials with app config', async () => {
+    const mockConfig = mockServices.rootConfig({
+      data: {
+        integrations: {
+          github: [
+            {
+              host: 'github.com',
+              apps: [
+                {
+                  appId: 5678,
+                  clientId: 'test',
+                  clientSecret: 'test',
+                  privateKey: `test-key`,
+                  webhookSecret: 'shhh',
+                  allowedInstallationOwners: ['my-enterprise'],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await getGithubCredentials(mockConfig, {
+      host: 'github.com',
+      enterprise: 'my-enterprise',
+      apiBaseUrl: '',
+    });
+
+    expect(result.organization).toBeUndefined();
+    // enterprise should be an auth strategy config object
+    expect(typeof result.enterprise).toBe('object');
+    expect(result.enterprise).toHaveProperty('appId', 5678);
+    expect(result.enterprise).toHaveProperty('privateKey');
+  });
+
+  it('should return both enterprise and organization credentials with app config', async () => {
+    const mockConfig = mockServices.rootConfig({
+      data: {
+        integrations: {
+          github: [
+            {
+              host: 'github.com',
+              apps: [
+                {
+                  appId: 9999,
+                  clientId: 'test',
+                  clientSecret: 'test',
+                  privateKey: `test-key`,
+                  webhookSecret: 'shhh',
+                  // Empty allowedInstallationOwners means it works for any org/enterprise
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await getGithubCredentials(mockConfig, {
+      host: 'github.com',
+      enterprise: 'my-enterprise',
+      organization: 'my-org',
+      apiBaseUrl: '',
+    });
+
+    // Both should use the app auth strategy
+    expect(typeof result.enterprise).toBe('object');
+    expect(result.enterprise).toHaveProperty('appId', 9999);
+    expect(typeof result.organization).toBe('object');
+    expect(result.organization).toHaveProperty('appId', 9999);
+  });
+
+  it('should throw error if no app matches enterprise and no token is available', async () => {
+    const mockConfig = mockServices.rootConfig({
+      data: {
+        integrations: {
+          github: [
+            {
+              host: 'github.com',
+              apps: [
+                {
+                  appId: 1111,
+                  clientId: 'test1',
+                  clientSecret: 'test1',
+                  privateKey: `test1`,
+                  webhookSecret: 'shhh1',
+                  allowedInstallationOwners: ['other-enterprise'],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      getGithubCredentials(mockConfig, {
+        host: 'github.com',
+        enterprise: 'my-enterprise',
+        apiBaseUrl: '',
+      }),
+    ).rejects.toThrow(
+      'Enterprise API for copilot works with both classic PAT tokens and GitHub Apps. No token or app is configured for "github.com" in the config.',
+    );
+  });
+
+  it('should prefer app over token for enterprise when both are configured', async () => {
+    const mockConfig = mockServices.rootConfig({
+      data: {
+        integrations: {
+          github: [
+            {
+              host: 'github.com',
+              token: 'should-not-use-this',
+              apps: [
+                {
+                  appId: 1234,
+                  clientId: 'test',
+                  clientSecret: 'test',
+                  privateKey: `test-key`,
+                  webhookSecret: 'shhh',
+                  allowedInstallationOwners: ['my-enterprise'],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await getGithubCredentials(mockConfig, {
+      host: 'github.com',
+      enterprise: 'my-enterprise',
+      apiBaseUrl: '',
+    });
+
+    // Should use app, not token
+    expect(typeof result.enterprise).toBe('object');
+    expect(result.enterprise).toHaveProperty('appId', 1234);
+  });
+
+  it('should return organization credentials with app config and enterprise credentials with token config when only token matches enterprise', async () => {
     const mockConfig = mockServices.rootConfig({
       data: {
         integrations: {
@@ -281,6 +423,7 @@ describe('getGithubCredentials', () => {
       apiBaseUrl: '',
     });
 
+    // Enterprise should fall back to token since no app matches 'my-enterprise'
     expect(result.enterprise).toBe('enterprise-token');
     // organization should be an auth strategy config object
     expect(typeof result.organization).toBe('object');

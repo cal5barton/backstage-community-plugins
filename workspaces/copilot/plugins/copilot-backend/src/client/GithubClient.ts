@@ -102,35 +102,87 @@ export class GithubClient implements GithubApi {
         },
       );
 
-      // For GitHub Apps, we need to get the installation ID first
-      // Create a temporary app-authenticated Octokit to get the installation ID
-      const appOctokit = new Octokit({
-        authStrategy: createAppAuth,
-        auth: {
-          appId: authStrategy.appId,
-          privateKey: authStrategy.privateKey,
-        },
-      });
-
-      // Get installation ID for the organization
-      const orgName =
+      // Get installation ID for the organization or enterprise
+      const targetName =
         type === 'organization'
           ? this.copilotConfig.organization
           : this.copilotConfig.enterprise;
 
-      if (!orgName) {
+      if (!targetName) {
         throw new Error(
           `No ${type} name configured in your app-config. Please see the documentation for setup instructions.`,
         );
       }
 
-      const { data: installation } =
-        await appOctokit.rest.apps.getOrgInstallation({
-          org: orgName,
+      // Use appropriate API based on type - enterprise uses different endpoint
+      let installation;
+      if (type === 'enterprise') {
+        // For enterprise, we need to use JWT (app-level) auth explicitly
+        // Create a JWT token and use a plain Octokit without authStrategy
+        const auth = createAppAuth({
+          appId: authStrategy.appId,
+          privateKey: authStrategy.privateKey,
+        });
+        const { token } = await auth({ type: 'app' });
+
+        // Use plain Octokit with manual auth header for getting installation
+        const plainOctokit = new Octokit({
+          baseUrl: this.copilotConfig.apiBaseUrl,
         });
 
+        try {
+          const response = await plainOctokit.request(
+            'GET /enterprises/{enterprise}/installation',
+            {
+              enterprise: targetName,
+              headers: {
+                authorization: `Bearer ${token}`,
+              },
+            },
+          );
+          installation = response.data;
+        } catch (error: any) {
+          if (error.status === 404) {
+            throw new Error(
+              `GitHub App (ID: ${authStrategy.appId}) is not installed on enterprise "${targetName}". ` +
+                `To use GitHub Apps for enterprise Copilot metrics, the app must be installed at the enterprise level. ` +
+                `Please install the app at: https://github.com/enterprises/${targetName}/settings/apps ` +
+                `or use a Personal Access Token (PAT) instead by configuring 'copilot.enterprise.token' in your app-config.`,
+            );
+          }
+          throw error;
+        }
+      } else {
+        // For organizations, we can use the app-authenticated Octokit
+        // since apps.getOrgInstallation automatically uses JWT auth
+        const appOctokit = new Octokit({
+          baseUrl: this.copilotConfig.apiBaseUrl,
+          authStrategy: createAppAuth,
+          auth: {
+            appId: authStrategy.appId,
+            privateKey: authStrategy.privateKey,
+          },
+        });
+
+        try {
+          const response = await appOctokit.rest.apps.getOrgInstallation({
+            org: targetName,
+          });
+          installation = response.data;
+        } catch (error: any) {
+          if (error.status === 404) {
+            throw new Error(
+              `GitHub App (ID: ${authStrategy.appId}) is not installed on organization "${targetName}". ` +
+                `Please install the app on this organization or use a Personal Access Token (PAT) instead ` +
+                `by configuring 'copilot.organization.token' in your app-config.`,
+            );
+          }
+          throw error;
+        }
+      }
+
       this.logger.debug(
-        `[GithubClient] Got installation ID ${installation.id} for ${orgName}`,
+        `[GithubClient] Got installation ID ${installation.id} for ${type} ${targetName}`,
       );
 
       // Now create the properly configured auth

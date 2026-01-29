@@ -47,9 +47,9 @@ export const getCopilotConfig = (config: Config): CopilotConfig => {
     );
   }
 
-  if (enterprise && !githubConfig.token) {
+  if (enterprise && !(githubConfig.token || githubConfig.apps)) {
     throw new Error(
-      `Enterprise API for copilot only works with "classic PAT" tokens. No token is configured for "${host}" in the config.`,
+      `Enterprise API for copilot works with both classic PAT tokens and GitHub Apps. No token or app is configured for "${host}" in the config.`,
     );
   }
 
@@ -88,13 +88,33 @@ export const getGithubCredentials = async (
   };
 
   if (enterprise) {
-    if (!githubConfig.token) {
-      throw new Error(
-        `Enterprise API for copilot only works with "classic PAT" tokens. No token is configured for "${host}" in the config.`,
+    let allowedApp;
+    if (githubConfig.apps && githubConfig.apps.length > 0) {
+      // Filter apps that allow this enterprise (case-insensitive comparison)
+      const enterpriseLowerCase = enterprise.toLowerCase();
+      allowedApp = githubConfig.apps.find(
+        app =>
+          !app.allowedInstallationOwners ||
+          app.allowedInstallationOwners.length === 0 ||
+          app.allowedInstallationOwners.some(
+            owner => owner.toLowerCase() === enterpriseLowerCase,
+          ),
       );
-    } else {
+    }
+
+    if (allowedApp) {
+      // Use app auth strategy for GitHub Apps - handles automatic token refresh
+      credentials.enterprise = {
+        appId: allowedApp.appId,
+        privateKey: allowedApp.privateKey,
+      };
+    } else if (githubConfig.token) {
       // Use token string for enterprise (PAT tokens) - Octokit will handle it
       credentials.enterprise = githubConfig.token;
+    } else {
+      throw new Error(
+        `Enterprise API for copilot works with both classic PAT tokens and GitHub Apps. No token or app is configured for "${host}" in the config.`,
+      );
     }
   }
 
