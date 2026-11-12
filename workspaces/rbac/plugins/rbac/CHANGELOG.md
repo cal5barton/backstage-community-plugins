@@ -1,5 +1,11 @@
 # @backstage-community/plugin-rbac
 
+## 2.3.8
+
+### Patch Changes
+
+- f418ee8: Updated dependency `@playwright/test` to `1.65.0`.
+
 ## 2.3.7
 
 ### Patch Changes
