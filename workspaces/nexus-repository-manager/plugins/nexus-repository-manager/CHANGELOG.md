@@ -1,5 +1,11 @@
 # @backstage-community/plugin-nexus-repository-manager
 
+## 1.27.6
+
+### Patch Changes
+
+- 41d7878: Updated dependency `@playwright/test` to `1.65.0`.
+
 ## 1.27.5
 
 ### Patch Changes
